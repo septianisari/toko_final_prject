@@ -1,0 +1,181 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\BarangModel;
+use Illuminate\Http\Request;
+use function Ramsey\Uuid\v1;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+
+class BarangControllers extends Controller
+{
+    /**
+     * Display a listing of the resource.
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function index()
+    {
+
+        // $barangs = BarangModel::all();
+        return view('barang.barang', [
+            'barangs' => BarangModel::latest()->filter(request(['search']))->paginate(6)
+        ]);
+    }
+
+    /**
+     * Show the form for creating a new resource.
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function create()
+    {
+        return view('barang.create');
+    }
+
+
+    public function data()
+    {
+        $barang = BarangModel::get();
+
+        return datatables()
+            ->of($barang)
+            ->addIndexColumn()
+            ->addColumn('select_all', function ($produk) {
+                return '
+                    <input type="checkbox" name="id_produk[]" value="' . $produk->id_produk . '">
+                ';
+            })
+            ->addColumn('kode_produk', function ($produk) {
+                return '<span class="label label-success">' . $produk->kode_produk . '</span>';
+            })
+            ->addColumn('harga_beli', function ($produk) {
+                return format_uang($produk->harga_beli);
+            })
+            ->addColumn('harga_jual', function ($produk) {
+                return format_uang($produk->harga_jual);
+            })
+            ->addColumn('stok', function ($produk) {
+                return format_uang($produk->stok);
+            })
+            ->addColumn('aksi', function ($produk) {
+                return '
+                <div class="btn-group">
+                    <button type="button" onclick="editForm(`' . route('produk.update', $produk->id_produk) . '`)" class="btn btn-xs btn-info btn-flat"><i class="fa fa-pencil"></i></button>
+                    <button type="button" onclick="deleteData(`' . route('produk.destroy', $produk->id_produk) . '`)" class="btn btn-xs btn-danger btn-flat"><i class="fa fa-trash"></i></button>
+                </div>
+                ';
+            })
+            ->rawColumns(['aksi', 'kode_produk', 'select_all'])
+            ->make(true);
+    }
+
+    /**
+     * Store a newly created resource in storage.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @return \Illuminate\Http\Response
+     */
+    public function store(Request $request)
+    {
+        // dd($request);
+        $request->validate([
+            'nama_barang' => 'required',
+            'harga' => 'required',
+            'stok' => 'required',
+            'foto' => 'required|image|mimes:jpeg,png,jpg|max:1024',
+            'deskripsi' => 'required',
+        ]);
+
+        //upload image
+        $image = $request->file('foto');
+        $image->storeAs('images/barang', $image->hashName());
+
+        $simpanData =  BarangModel::create([
+            'nama_barang' => $request->post('nama_barang'),
+            'harga' => $request->post('harga'),
+            'stok' => $request->post('stok'),
+            'foto' => $image->hashName(),
+            'deskripsi' => $request->post('deskripsi'),
+        ]);
+        if ($simpanData) {
+            return redirect('admin/barang')->with('success', 'data berhasil disimpan');
+        }
+    }
+
+    /**
+     * Show the form for editing the specified resource.
+     *
+     * @param  int  $id
+     * @return \Illuminate\Http\Response
+     */
+    public function edit($id)
+    {
+        $barang = BarangModel::findOrFail($id);
+        return view('barang.edit', compact('barang'));
+    }
+
+    /**
+     * Update the specified resource in storage.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @param  int  $id
+     * @return \Illuminate\Http\Response
+     */
+    public function update(Request $request, $id)
+    {
+        $request->validate([
+            'nama_barang' => 'required',
+            'harga' => 'required',
+            'stok' => 'required',
+            'foto' => 'image|mimes:jpeg,png,jpg|max:1024',
+            'deskripsi' => 'required',
+        ]);
+
+        $barang = BarangModel::find($id);
+
+        if ($request->file('foto') == '') {
+            $barang->update([
+                'nama_barang' => $request->nama_barang,
+                'harga' => $request->harga,
+                'stok' => $request->stok,
+                'deskripsi' => $request->deskripsi
+            ]);
+        } else {
+            // Storage::disk('local')->delete('public/images/barang/' . $barang->foto);
+
+            $image = $request->file('foto');
+            $image->storeAs('images/barang/', $image->hashName());
+
+            $barang->update([
+                'nama_barang' => $request->nama_barang,
+                'harga' => $request->harga,
+                'stok' => $request->stok,
+                'foto' => $image->hashName(),
+                'deskripsi' => $request->deskripsi
+            ]);
+        }
+        if ($barang) {
+            return redirect()->route('barang')->with('success', 'Data Barang Berhasil di update');
+        } else {
+            return redirect()->route('barang')->with('error', 'Data Barang Gagal di update');
+        }
+    }
+
+    // /**
+    //  * Remove the specified resource from storage.
+    //  *
+    //  * @param  int  $id
+    //  * @return \Illuminate\Http\Response
+    //  */
+
+    public function destroy($id)
+    {
+        $barang = BarangModel::findOrFail($id);
+        Storage::disk('local')->delete('public/images/barang/' . $barang->foto);
+        $barang->delete();
+
+        return redirect()->back()->with('success', 'Data berhasil Dihapus');
+    }
+}
